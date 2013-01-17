@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [==])
   (:use [clojure.core.logic :exclude [is] :as l]
         [clojure.core.logic.nominal :exclude [fresh hash] :as nom]
-        clojure.test :reload)
+        clojure.test)
   (:require [clojure.pprint :as pp]
             [clojure.core.logic.fd :as fd]))
 

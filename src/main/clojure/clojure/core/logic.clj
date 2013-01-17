@@ -104,6 +104,18 @@
   (take* [a]))
 
 ;; -----------------------------------------------------------------------------
+;; Reflection protocols
+(defprotocol IMKExp
+  (mk-exp [this]))
+
+(extend-type Object
+  IMKExp
+  (mk-exp [_] :goal))
+
+(defprotocol IMKVars
+  (mk-vars [this]))
+
+;; -----------------------------------------------------------------------------
 ;; soft cut & committed choice protocols
 
 (defprotocol IIfA
@@ -1159,7 +1171,11 @@
      `(mplus ~e (fn [] (mplus* ~@e-rest)))))
 
 (defmacro -inc [& rest]
-  `(fn -inc [] ~@rest))
+  `(reify
+     clojure.lang.IFn
+     (~'invoke [this#] ~@rest)
+     IMKExp
+     (mk-exp [this#] :inc)))
 
 (extend-type Object
   ITake
@@ -1214,7 +1230,7 @@
 ;; -----------------------------------------------------------------------------
 ;; Inc
 
-(extend-type clojure.lang.Fn
+(extend-type clojure.lang.IFn
   IBind
   (bind [this g]
     (-inc (bind (this) g)))
@@ -1268,9 +1284,13 @@
   execution of the clauses."
   [& clauses]
   (let [a (gensym "a")]
-    `(fn [~a]
-       (-inc
-        (mplus* ~@(bind-conde-clauses a clauses))))))
+    `(reify
+       clojure.lang.IFn
+       (~'invoke [this# ~a]
+         (-inc
+           (mplus* ~@(bind-conde-clauses a clauses))))
+       IMKExp
+       (mk-exp [this#] :conde))))
 
 (defn- lvar-bind [sym]
   ((juxt identity
@@ -1283,10 +1303,16 @@
   "Creates fresh variables. Goals occuring within form a logical 
   conjunction."
   [[& lvars] & goals]
-  `(fn [a#]
-     (-inc
-      (let [~@(lvar-binds lvars)]
-        (bind* a# ~@goals)))))
+  `(let [~@(lvar-binds lvars)]
+     (reify
+       clojure.lang.IFn
+       (~'invoke [this# a#]
+         (-inc
+           (bind* a# ~@goals)))
+       IMKExp
+       (mk-exp [this#] :fresh)
+       IMKVars
+       (mk-vars [this#] [~@lvars]))))
 
 (declare reifyg)
 
@@ -1294,10 +1320,11 @@
   (if (> (count bindings) 1)
     `(-run ~oc ~n [q#] (fresh ~bindings ~@goals (== q# ~bindings)))
     `(let [xs# (take* (fn []
-                        ((fresh [~x]
-                           ~@goals
-                           (reifyg ~x))
-                         (tabled-s ~oc))))]
+                        (bind
+                          (tabled-s ~oc)
+                          (fresh [~x]
+                            ~@goals
+                            (reifyg ~x)))))]
        (if ~n
          (take ~n xs#)
          xs#))))
@@ -1562,7 +1589,7 @@
              (recur b gr))
            b)))
 
-  clojure.lang.Fn
+  clojure.lang.IFn
   (ifa [b gs c]
        (-inc (ifa (b) gs c)))
 
@@ -1584,7 +1611,7 @@
           (recur b gr))
         b)))
 
-  clojure.lang.Fn
+  clojure.lang.IFn
   (ifu [b gs c]
     (-inc (ifu (b) gs c)))
 
