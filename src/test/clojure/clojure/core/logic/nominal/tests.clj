@@ -486,3 +486,75 @@
                (== x y)
                (== z x))))
         '(_0))))
+
+(deftest test-nominal-relational-reification-1
+  (is (= (run* [q]
+           (fresh [e]
+             (nom/fresh [a b]
+               (== (nom/tie a a) e)
+               (== (nom/tie b b) e)
+               (== `(~e ~a ~b) q))))
+        `((~(nom/tie 'a_0 'a_0) ~'a_0 ~'a_1))))
+  (is (= (run* [q]
+           (fresh [e]
+             (nom/fresh [a b]
+               (== (nom/tie b b) e)
+               (== (nom/tie a a) e)
+               (== `(~e ~a ~b) q))))
+        `((~(nom/tie 'a_0 'a_0) ~'a_1 ~'a_0))))
+  ;; NOTE(webyrd): perhaps these should both reify to
+  ;; `((~(nom/tie 'a_0 'a_0) ~'a_1 ~'a_2))
+)
+
+(deftest test-nominal-relational-reification-2
+  (is (= (run* [q]
+           (fresh [x y e]
+             (nom/fresh [a b]
+               (== (nom/tie a x) e)
+               (== (nom/tie b y) e)
+               (== `(~a ~b ~x ~y ~e) q))))
+        `(((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2)) ~':- ~'a_0#_3 ~'(swap [a_1 a_0] _2 _3)))))
+  (is (= (run* [q]
+           (fresh [x y e]
+             (nom/fresh [a b]
+               (== (nom/tie b y) e)
+               (== (nom/tie a x) e)
+               (== `(~a ~b ~x ~y ~e) q))))
+        `(((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_1 '_3)) ~':- ~'a_1#_2 ~'(swap [a_0 a_1] _3 _2)))))
+)
+
+(deftest test-nominal-relational-reification-3
+  (is (= (run* [q]
+           (fresh [x y e1 e2]
+             (nom/fresh [a b]
+               (== (nom/tie a x) e1)
+               (== e1 e2)
+               (== (nom/tie b y) e2)
+               (== `(~a ~b ~x ~y ~e1 ~e2) q))))
+        `(((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2) ~(nom/tie 'a_0 '_2)) ~':- ~'a_0#_3 ~'(swap [a_1 a_0] _2 _3)))))
+  (is (= (run* [q]
+           (fresh [x y e1 e2]
+             (nom/fresh [a b]
+               (== (nom/tie a x) e1)
+               (== (nom/tie b y) e2)
+               (== e1 e2)
+               (== `(~a ~b ~x ~y ~e1 ~e2) q))))
+        `(((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2) ~(nom/tie 'a_1 '_3)) ~':- ~'a_1#_2 ~'(swap [a_0 a_1] _3 _2)))))
+)
+
+(deftest test-nominal-relational-reification-ok-4
+  (is (= (run* [q]
+           (fresh [x y e1 e2]
+             (nom/fresh [a b]
+               (== (nom/tie a x) e1)
+               (== (nom/tie b y) e2)
+               (== `(~a ~b ~x ~y ~e1 ~e2) q))))
+        `((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2) ~(nom/tie 'a_1 '_3)))))
+  (is (= (run* [q]
+           (fresh [x y e1 e2]
+             (nom/fresh [a b]
+               (== (nom/tie b y) e2)
+               (== (nom/tie a x) e1)
+               (== `(~a ~b ~x ~y ~e1 ~e2) q))))
+        `((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2) ~(nom/tie 'a_1 '_3)))))
+)
