@@ -2,7 +2,6 @@
   (:refer-clojure :exclude [== hash])
   (:use [clojure.core.logic.protocols]
         [clojure.core.logic :exclude [fresh] :as l])
-  (:require [clojure.core.logic.fd :as fd])
   (:import [java.io Writer]
            [clojure.core.logic LVar LCons]
            [clojure.core.logic.protocols IBindable ITreeTerm]))
@@ -43,8 +42,11 @@
         (let [v (with-meta (lvar) (meta t))
               rt (root-val s t)
               s (-> (if (subst-val? rt) (ext-no-check s v rt) s)
-                  (update-dom v ::nom (fnil (fn [d] (conj d t)) #{}))
-                  (update-dom t ::nom (fnil (fn [d] (conj d v)) #{}))
+                  (entangle t v)  
+                  (update-dom v ::nom
+                    (fnil (fn [d] (conj d t)) #{}) ::l/no-prop)
+                  (update-dom t ::nom
+                    (fnil (fn [d] (conj d v)) #{}) ::l/no-prop)
                   ((suspc v t swap)))]
           [v s])
         (swap-noms t swap s))))
@@ -242,13 +244,7 @@
                      a a]
                 (if (empty? a*) a
                     (recur (rest a*) ((hash (first a*) t2) a))))
-              :else
-              (let [d1 (get-dom-fd a t1)
-                    d2 (get-dom-fd a t2)]
-                ((composeg*
-                  (if (nil? d2) identity (fd/dom t1 d2))
-                  (if (nil? d1) identity (fd/dom t2 d1))
-                  (addcg c)) a)))))) a))
+              :else ((addcg c) a))))) a))
     IConstraintOp
     (rator [_] `suspc)
     (rands [_] [v1 v2])
@@ -267,10 +263,9 @@
     (runnable? [_ a]
       (let [t1 (walk a v1)
             t2 (walk a v2)]
-        (or (not (lvar? t1)) (not (lvar? t2)) (= t1 t2)
-            (not= (get-dom-fd a t1) (get-dom-fd a t2)))))
+        (or (not (lvar? t1)) (not (lvar? t2)) (= t1 t2))))
     IConstraintWatchedStores
-    (watched-stores [this] #{::l/subst ::l/fd})))
+    (watched-stores [this] #{::l/subst})))
 
 (defn suspc [v1 v2 swap]
   (cgoal (-suspc v1 v2 swap)))

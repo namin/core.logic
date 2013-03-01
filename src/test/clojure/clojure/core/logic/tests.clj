@@ -2924,6 +2924,141 @@
          '((_0 :- (hashc _0 _1))))))
 
 ;; =============================================================================
+;; Entanglement
+
+(deftest test-entanglement-add-dom-1
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        s (-> empty-s
+             (entangle x y)
+             (add-dom x ::l/fd (fd/domain 1 2 3)))]
+    (is (= (get-dom s y ::l/fd) (fd/domain 1 2 3)))))
+
+(deftest test-entanglement-add-dom-2
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        s (-> empty-s
+             (entangle x y)
+             (add-dom y ::l/fd (fd/domain 1 2 3)))]
+    (is (= (get-dom s x ::l/fd) (fd/domain 1 2 3)))))
+
+(deftest test-entanglement-add-dom-3
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        z (lvar 'z)
+        s (-> empty-s
+              (entangle x y)
+              (entangle y z)
+              (add-dom x ::l/fd (fd/domain 1 2 3)))]
+    (is (= (get-dom s z ::l/fd) (fd/domain 1 2 3)))))
+
+(deftest test-entanglement-add-dom-one-root-1
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        z (lvar 'z)
+        s (-> empty-s
+              (entangle y x)
+              (entangle z x)
+              (add-dom x ::l/fd (fd/domain 1 2 3)))]
+    (is (= (get-dom s y ::l/fd) (fd/domain 1 2 3)))
+    (is (= (get-dom s z ::l/fd) (fd/domain 1 2 3)))))
+
+(deftest test-entanglement-add-dom-one-root-2
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        z (lvar 'z)
+        s (-> empty-s
+              (entangle y x)
+              (entangle z x)
+              (add-dom y ::l/fd (fd/domain 1 2 3)))]
+    (is (= (get-dom s x ::l/fd) (fd/domain 1 2 3)))
+    (is (= (get-dom s z ::l/fd) (fd/domain 1 2 3)))))
+
+(deftest test-entanglement-add-dom-one-root-3
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        z (lvar 'z)
+        s (-> empty-s
+              (entangle y x)
+              (entangle z x)
+              (add-dom z ::l/fd (fd/domain 1 2 3)))]
+    (is (= (get-dom s x ::l/fd) (fd/domain 1 2 3)))
+    (is (= (get-dom s y ::l/fd) (fd/domain 1 2 3)))))
+
+(deftest test-entanglement-add-dom-4
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        z (lvar 'z)
+        s (-> empty-s
+              (entangle x y)
+              (entangle y z)
+              (add-dom z ::l/fd (fd/domain 1 2 3)))]
+    (is (= (get-dom s x ::l/fd) (fd/domain 1 2 3)))))
+
+(deftest test-entanglement-add-dom-root-var-1
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        z (lvar 'z)
+        s (-> empty-s
+              (unify x y)
+              (entangle x z)
+              (add-dom z ::l/fd (fd/domain 1 2 3)))]
+    (is (= (get-dom s x ::l/fd) (fd/domain 1 2 3)))))
+
+(deftest test-entanglement-add-dom-root-var-2
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        z (lvar 'z)
+        s (-> empty-s
+              (unify y x)
+              (entangle x z)
+              (add-dom z ::l/fd (fd/domain 1 2 3)))]
+    (is (= (get-dom s x ::l/fd) (fd/domain 1 2 3)))))
+
+(deftest test-entanglement-update-dom-1
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        s (-> empty-s
+             (entangle x y)
+             (update-dom x ::l/nom (fnil (fn [d] (conj d :foo)) #{})))]
+    (is (= (get-dom s y ::l/nom) #{:foo}))))
+
+(deftest test-entanglement-update-dom-2
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        s (-> empty-s
+             (entangle x y)
+             (update-dom y ::l/nom (fnil (fn [d] (conj d :foo)) #{})))]
+    (is (= (get-dom s x ::l/nom) #{:foo}))))
+
+(deftest test-entanglement-update-dom-3
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        z (lvar 'z)
+        s (-> empty-s
+             (entangle x y)
+             (entangle y z)
+             (update-dom x ::l/nom (fnil (fn [d] (conj d :foo)) #{})))]
+    (is (= (get-dom s z ::l/nom) #{:foo}))))
+
+(deftest test-entanglement-update-dom-4
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        z (lvar 'z)
+        s (-> empty-s
+              (entangle x y)
+              (entangle y z)
+              (update-dom z ::l/nom (fnil (fn [d] (conj d :foo)) #{})))]
+    (is (= (get-dom s x ::l/nom) #{:foo}))))
+
+(deftest test-entanglement-fd-in-1
+  (let [x (lvar 'x)
+        y (lvar 'y)
+        s (-> empty-s (entangle x y))
+        s (((fd/in x (fd/domain 1 2 3)) s))]
+    (is (= (get-dom s x ::l/fd) (fd/domain 1 2 3)))))
+
+;; =============================================================================
 ;; Implementation Specific Tests - Subject To Change
 
 (deftest test-attrs-1 []

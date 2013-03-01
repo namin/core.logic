@@ -175,8 +175,11 @@
 
 ;; =============================================================================
 ;; SubstValue
+;; v - the actual ground value of the var
+;; doms - the constraint domains assigned to the var
+;; eset - set of other vars this var is entangled with
 
-(defrecord SubstValue [v doms]
+(defrecord SubstValue [v doms eset]
   Object
   (toString [_]
     (str v)))
@@ -185,9 +188,10 @@
   (instance? SubstValue x))
 
 (defn subst-val
-  ([x] (SubstValue. x nil))
-  ([x doms] (SubstValue. x doms))
-  ([x doms _meta] (with-meta (SubstValue. x doms) _meta)))
+  ([x] (SubstValue. x nil nil))
+  ([x doms] (SubstValue. x doms nil))
+  ([x doms _meta] (with-meta (SubstValue. x doms nil) _meta))
+  ([x doms eset _meta] (with-meta (SubstValue. x doms eset) _meta)))
 
 ;; =============================================================================
 ;; Substitutions
@@ -433,32 +437,67 @@
     (if (subst-val? v)
       (-> v meta attr))))
 
-(defn add-dom [s x dom domv]
-  (let [x (root-var s x)
-        v (root-val s x)]
-    (if (subst-val? v)
-      (update-var s x (assoc-dom v dom domv))
-      (let [v (if (lvar? v) ::unbound v)]
-        (ext-no-check s x (subst-val v {dom domv}))))))
+(defn add-dom
+  ([s x dom domv]
+     (let [x (root-var s x)]
+       (add-dom s x dom domv nil)))
+  ([s x dom domv seenset]
+     (let [v (root-val s x)
+           s (if (subst-val? v)
+               (update-var s x (assoc-dom v dom domv))
+               (let [v (if (lvar? v) ::unbound v)]
+                 (ext-no-check s x (subst-val v {dom domv}))))]
+       (reduce
+         (fn [s y]
+           (let [y (root-var s y)]
+             (if-not (contains? seenset y)
+               (add-dom s y dom domv (conj (or seenset #{}) x))
+               s)))
+         s
+         (:eset v)))))
 
-(defn update-dom [s x dom f]
-  (let [x (root-var s x)
-        v (root-val s x)
-        v (if (lvar? v)
-            (subst-val ::unbound)
-            v)
-        doms (:doms v)]
-    (update-var s x (assoc-dom v dom (f (get doms dom))))))
+(defn update-dom
+  ([s x dom f]
+     (let [x (root-var s x)]
+       (update-dom s x dom f nil)))
+  ([s x dom f seenset]
+     (let [v (root-val s x)
+           v (if (lvar? v)
+               (subst-val ::unbound)
+               v)
+           doms (:doms v)
+           s (update-var s x (assoc-dom v dom (f (get doms dom))))]
+       (if (not= seenset ::no-prop)
+         (reduce
+           (fn [s y]
+             (let [y (root-var s y)]
+               (if-not (contains? seenset y)
+                 (update-dom s y dom f (conj (or seenset #{}) x))
+                 s)))
+           s
+           (:eset v))
+         s))))
 
-(defn rem-dom [s x dom]
-  (let [x (root-var s x)
-        v (root-val s x)]
-    (if (subst-val? v)
-      (let [new-doms (dissoc (:doms v) dom)]
-        (if (and (zero? (count new-doms)) (not= (:v v) ::unbound))
-          (update-var s x (:v v))
-          (update-var s x (assoc v :doms new-doms))))
-      s)))
+(defn rem-dom
+  ([s x dom]
+     (let [x (root-var s x)]
+       (rem-dom s x dom nil)))
+  ([s x dom seenset]
+     (let [v (root-val s x)
+           s (if (subst-val? v)
+               (let [new-doms (dissoc (:doms v) dom)]
+                 (if (and (zero? (count new-doms)) (not= (:v v) ::unbound))
+                   (update-var s x (:v v))
+                   (update-var s x (assoc v :doms new-doms))))
+               s)]
+       (reduce
+         (fn [s y]
+           (let [y (root-var s y)]
+             (if-not (contains? seenset y)
+               (rem-dom s y dom (conj (or seenset #{}) x))
+               s)))
+         s
+         (:eset v)))))
 
 (defn get-dom [s x dom]
   (let [v (root-val s x)]
@@ -492,20 +531,69 @@
   (fn [a]
     (vary-meta a assoc k v)))
 
-(defn merge-subst-vals [x root]
-  (let [doms (loop [xd (seq (:doms x)) rd (:doms root) r {}]
+;; NOTE: this may result in some redundant computations
+;; in particular complex nominal logic programs that involve
+;; FD and other similar constraint domains - David
+
+(defn merge-doms [s x doms]
+  (let [xdoms (:doms (root-val s x))]
+    (loop [doms (seq doms) s s]
+      (if doms
+        (let [[dom domv] (first doms)]
+          (let [xdomv (get xdoms dom ::not-found)
+                ndomv (if (= xdomv ::not-found)
+                        domv
+                        (-merge-doms domv xdomv))]
+            (when ndomv
+              (recur (next doms)
+                (add-dom s x dom ndomv #{})))))
+        s))))
+
+(defn update-eset [s doms eset]
+  (loop [eset (seq eset) s s]
+    (if eset
+      (when-let [s (merge-doms s (root-var s (first eset)) doms)]
+        (recur (next eset) s))
+      s)))
+
+(defn merge-with-root [s x root]
+  (let [xv    (root-val s x)
+        rootv (root-val s root)
+        eset  (set/union (:eset rootv) (:eset xv))
+        doms (loop [xd (seq (:doms xv)) rd (:doms rootv) r {}]
                (if xd
                  (let [[xk xv] (first xd)]
                    (if-let [[_ rv] (find rd xk)]
                      (let [nd (-merge-doms xv rv)]
                        (when nd
-                         (recur (next xd) (dissoc rd xk)
-                           (assoc r xk nd))))
+                         (recur (next xd)
+                           (dissoc rd xk) (assoc r xk nd))))
                      (recur (next xd) rd (assoc r xk xv))))
-                 (merge r rd)))]
-    (when doms
-      (subst-val (:v root) doms
-        (merge (meta x) (meta root))))))
+                 (merge r rd)))
+        nv (when doms
+             (subst-val (:v rootv) doms eset
+               (merge (meta xv) (meta rootv))))]
+    (when nv
+      (-> s
+        (ext-no-check root nv)
+        (update-eset doms eset)))))
+
+;; =============================================================================
+;; Entanglement
+
+(defn to-subst-val [v]
+  (if (subst-val? v)
+    v
+    (subst-val ::unbound)))
+
+(defn entangle [s x y]
+  (let [x  (root-var s x)
+        y  (root-var s y)
+        xv (to-subst-val (root-val s x))
+        yv (to-subst-val (root-val s y))]
+    (-> s
+      (update-var x (assoc xv :eset (conj (or (:eset xv) #{}) y)))
+      (update-var y (assoc yv :eset (conj (or (:eset yv) #{}) x))))))
 
 ;; =============================================================================
 ;; Logic Variables
@@ -548,10 +636,7 @@
           (let [[root other] repoint
                 s (assoc s :cs (migrate (:cs s) other root))
                 s (if (-> other clojure.core/meta ::unbound)
-                    (when-let [nsv (merge-subst-vals
-                                    (root-val s other)
-                                    (root-val s root))]
-                      (ext-no-check s root nsv))
+                    (merge-with-root s other root)
                     s)]
             (when s
               (ext-no-check s other root)))
