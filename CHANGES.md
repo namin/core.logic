@@ -1,3 +1,52 @@
+From 0.8.2 to 0.8.3
+====
+
+Bug Fixes
+----
+* LOGIC-126: bad fd/+ fd/* interaction from StackOverflow
+
+From 0.8.1 to 0.8.2
+====
+
+Bug Fixes
+----
+* LOGIC-124: fix disjoint?* bug
+
+From 0.8.0 to 0.8.1
+====
+
+Enhancements
+----
+* LOGIC-108: recursive featurec now supported
+
+Bug Fixes
+----
+* LOGIC-83: old typo in test
+* LOGIC-116: fix bug in ConstraintStore migrate
+* LOGIC-120/121/122: bugs around the simple unifier
+
+From 0.8.0-rc3 to 0.8.0
+====
+
+No changes
+
+From 0.8.0-rc2 to 0.8.0-rc3
+====
+
+Bug Fixes
+----
+* LOGIC-119: fix disunify for maps
+* LOGIC-112: fix tabling
+* LOGIC-115: fix fd/in on singleton domains
+* LOGIC-111: fix conda regression
+* LOGIC-109: fix namespaced keyword issue in defc macro
+* copy-term fixed
+
+Enhancements
+----
+* nominal no longer depends on fd
+* ClojureScript version performance enhancements
+
 From 0.8.0-rc1 to 0.8.0-rc2
 ====
 

@@ -139,7 +139,7 @@
                (== [a b x y] q))))
         '([a_0 a_1 a_0 a_1]
           ([a_0 a_1 _2 _3] :- (swap [a_0 a_1] _2 _3))
-          ([a_0 a_1 _2 _3] :- a_0#_3 (swap [a_1 a_0] _2 _3)))))
+          ([a_0 a_1 _2 _3] :- (swap [a_1 a_0] _2 _3) a_0#_3))))
   (is (= (run* [q]
            (fresh [bx by]
              (nom/fresh [x y]
@@ -487,6 +487,41 @@
                (== z x))))
         '(_0))))
 
+(deftest test-no-dup-reified-freshness-constraints
+  (is (= (run* [q]
+           (fresh [x y]
+             (nom/fresh [a b]
+               (== (nom/tie a x) (nom/tie b y))
+               (== [a b x y] q)
+               (== x y))))
+        '(([a_0 a_1 _2 _2] :- a_1#_2 a_0#_2))))
+  (is (= (run* [q]
+           (fresh [x]
+             (nom/fresh [a]
+               (nom/hash a x)
+               (nom/hash a x)
+               (== q [x a]))))
+        '(([_0 a_1] :- a_1#_0)))))
+
+(deftest test-logic-119-tie-disequality-1
+  (is (= (run* [q]
+           (nom/fresh [a]
+             (!= (nom/tie a a) 'foo)))
+        '(_0)))
+  (is (= (run* [q]
+           (nom/fresh [a]
+             (!= (nom/tie a a) (nom/tie a a))))
+        '()))
+  (is (= (run* [q]
+           (nom/fresh [a b]
+             (!= (nom/tie a a) (nom/tie a b))))
+        '(_0)))
+  (comment ;; this one will be tricky to get right.
+    (is (= (run* [q]
+             (nom/fresh [a b]
+               (!= (nom/tie a a) (nom/tie b b))))
+          '()))))
+
 (deftest test-nominal-relational-reification-1
   (is (= (run* [q]
            (fresh [e]
@@ -513,7 +548,7 @@
                (== (nom/tie a x) e)
                (== (nom/tie b y) e)
                (== `(~a ~b ~x ~y ~e) q))))
-        `(((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2)) ~':- ~'a_0#_3 ~'(swap [a_1 a_0] _2 _3)))))
+        `(((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2)) ~':- ~'(swap [a_1 a_0] _2 _3) ~'a_0#_3))))
   (is (= (run* [q]
            (fresh [x y e]
              (nom/fresh [a b]
@@ -531,7 +566,7 @@
                (== e1 e2)
                (== (nom/tie b y) e2)
                (== `(~a ~b ~x ~y ~e1 ~e2) q))))
-        `(((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2) ~(nom/tie 'a_0 '_2)) ~':- ~'a_0#_3 ~'(swap [a_1 a_0] _2 _3)))))
+        `(((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2) ~(nom/tie 'a_0 '_2)) ~':- ~'(swap [a_1 a_0] _2 _3) ~'a_0#_3))))
   (is (= (run* [q]
            (fresh [x y e1 e2]
              (nom/fresh [a b]
@@ -558,3 +593,5 @@
                (== `(~a ~b ~x ~y ~e1 ~e2) q))))
         `((~'a_0 ~'a_1 ~'_2 ~'_3  ~(nom/tie 'a_0 '_2) ~(nom/tie 'a_1 '_3)))))
 )
+
+

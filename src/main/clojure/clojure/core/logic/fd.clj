@@ -466,18 +466,19 @@
 (defn disjoint?* [is js]
   (if (disjoint? (interval (lb is) (ub is))
                  (interval (lb js) (ub js)))
-      true
-      (let [d0 (intervals is)
-            d1 (intervals js)]
-        (loop [d0 d0 d1 d1]
-          (if (nil? d0)
-            true
-            (let [i (first d0)
-                  j (first d1)]
-              (cond
-               (or (interval-< i j) (disjoint? i j)) (recur (next d0) d1)
-               (interval-> i j) (recur d0 (next d1))
-               :else false)))))))
+    true
+    (let [d0 (intervals is)
+          d1 (intervals js)]
+      (loop [d0 d0 d1 d1]
+        (if (or (nil? d0) (nil? d1))
+          true
+          (let [i (first d0)
+                j (first d1)]
+            (cond
+              (interval-< i j) (recur (next d0) d1)
+              (interval-> i j) (recur d0 (next d1))
+              (disjoint? i j)  (recur (next d0) d1)
+              :else false)))))))
 
 (declare normalize-intervals singleton-dom? multi-interval)
 
@@ -626,7 +627,10 @@
 (defn resolve-storable-dom
   [a x dom]
   (if (singleton-dom? dom)
-    (ext-run-cs (rem-dom a x ::l/fd) x dom)
+    (let [xv (walk a x)]
+      (if (lvar? xv)
+        (ext-run-cs (rem-dom a x ::l/fd) x dom)
+        a))
     (ext-dom-fd a x dom)))
 
 (defn update-var-dom
@@ -711,14 +715,16 @@
     IEnforceableConstraint
     clojure.lang.IFn
     (invoke [this s]
-      (when (member? (get-dom s x) (walk s x))
-        (rem-dom s x ::l/fd)))
+      (let [dom (-> (root-val s x) :doms ::l/fd)]
+        (when (member? dom (walk s x))
+          (rem-dom s x ::l/fd))))
     IConstraintOp
     (rator [_] `domc)
     (rands [_] [x])
     IRelevant
     (-relevant? [this s]
-      (not (nil? (get-dom s x))))
+      (let [dom (-> (root-val s x) :doms ::l/fd)]
+        (not (nil? dom))))
     IRunnable
     (runnable? [this s]
       (not (lvar? (walk s x))))
@@ -1025,6 +1031,8 @@
           (loop [y* (seq y*) s s]
             (if y*
               (let [y (first y*)
+                    ;; NOTE: we can't just get-dom because get-dom
+                    ;; return nil, walk returns the var - David
                     v (or (get-dom s y) (walk s y))
                     s (if-not (lvar? v)
                         (cond

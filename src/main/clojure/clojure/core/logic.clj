@@ -152,7 +152,7 @@
 
   (migrate [this x root]
     (let [xcs    (km x)
-          rootcs (km root)
+          rootcs (km root #{})
           nkm    (assoc (dissoc km x) root (into rootcs xcs))]
       (ConstraintStore. nkm cm cid running)))
 
@@ -491,10 +491,20 @@
        (sync-eset s v seenset
          (fn [s y] (rem-dom s y dom (conj (or seenset #{}) x)))))))
 
+;; NOTE: I don't think we need to bother returning ::not-dom or some other
+;; not found value. Assume the case where the var is bound to nil in 
+;; the substitution where the var has a domain. That the var is member
+;; will be verified by domc or something similar. The case where the var
+;; is nil and has no domain is trivial.
+
 (defn get-dom [s x dom]
   (let [v (root-val s x)]
-    (if (subst-val? v)
-      (-> v :doms dom))))
+    (cond
+      (subst-val? v) (let [v' (:v v)]
+                       (if (not= v' ::unbound)
+                         v'
+                         (-> v :doms dom)))
+      (not (lvar? v)) v)))
 
 (defn- make-s
   ([] (make-s {}))
@@ -667,14 +677,11 @@
   IBuildTerm
   (build-term [u s]
     (let [m (:s s)
-          l (:l s)
           cs (:cs s)
           lv (lvar 'ignore) ]
       (if (contains? m u)
         s
-        (make-s (assoc m u lv)
-                (cons (Pair. u lv) l)
-                cs)))))
+        (make-s (assoc m u lv) cs)))))
 
 (defn lvar
   ([]
@@ -685,7 +692,7 @@
   ([name gensym]
      (let [oname name
            name (if gensym
-                  (str name (. clojure.lang.RT (nextID)))
+                  (str name "__" (. clojure.lang.RT (nextID)))
                   (str name))]
        (LVar. name oname (.hashCode name) nil))))
 
@@ -953,10 +960,10 @@
   (walk-term [v f] (f v))
 
   clojure.lang.ISeq
-  (walk-term [v f]
-    (with-meta
-      (map #(walk-term (f %) f) v)
-      (meta v)))
+   (walk-term [v f]
+     (with-meta
+       (doall (map #(walk-term (f %) f) v))
+       (meta v)))
 
   clojure.lang.IPersistentVector
   (walk-term [v f]
@@ -1012,7 +1019,7 @@
   Object
   (build-term [u s] s)
 
-  clojure.lang.ISeq
+  clojure.lang.IPersistentCollection
   (build-term [u s]
     (reduce build s u)))
 
@@ -1076,16 +1083,12 @@
 ;; -----------------------------------------------------------------------------
 ;; MZero
 
-(extend-protocol IBind
-  nil
-  (bind [_ g] nil))
-
-(extend-protocol IMPlus
-  nil
-  (mplus [_ f] (f)))
-
-(extend-protocol ITake
-  nil
+(extend-type nil
+  IBind
+  (bind [_ g] nil)
+  IMPlus
+  (mplus [_ f] (f))
+  ITake
   (take* [_] '()))
 
 ;; -----------------------------------------------------------------------------
@@ -1921,21 +1924,48 @@
 
 ;; -----------------------------------------------------------------------------
 ;; Data Structures
-;; (atom #{}) is cache, waiting streams are PersistentVectors
+;; waiting streams are PersistentVectors
 
-(deftype SuspendedStream [cache ansv* f]
+;; AnswerCache
+;; ansl - ans list, for calculating the fixpoint
+;; anss - cached answer set, for quickly checking whether an answer term
+;;        is already in the cache
+
+(deftype AnswerCache [ansl anss _meta]
+  Object
+  (toString [this]
+    (str "<answer-cache:" (pr-str ansl) ">"))
+
+  clojure.lang.IObj
+  (meta [_] _meta)
+  (withMeta [_ new-meta]
+    (AnswerCache. ansl anss new-meta))
+
   clojure.lang.ILookup
   (valAt [this k]
     (.valAt this k nil))
   (valAt [this k not-found]
     (case k
-      :cache cache
-      :ansv* ansv*
-      :f f
+      :ansl ansl
+      :anss anss
       not-found))
+
+  IAnswerCache
+  (-add [this x]
+    (AnswerCache. (conj ansl x) (conj anss x) _meta))
+  (-cached? [_ x]
+    (let [^clojure.lang.IPersistentSet anss anss]
+      (.contains anss x))))
+
+(defn answer-cache [] (AnswerCache. () #{} nil))
+
+(defmethod print-method AnswerCache [x ^Writer writer]
+  (.write writer (str x)))
+
+(defrecord SuspendedStream [cache ansv* f]
   ISuspendedStream
   (ready? [this]
-    (not= @cache ansv*)))
+    (not (identical? (:ansl @cache) ansv*))))
 
 (defn make-suspended-stream [cache ansv* f]
   (SuspendedStream. cache ansv* f))
@@ -1985,7 +2015,7 @@
   (-reify-tabled [this v]
     (let [v (walk this v)]
       (cond
-       (lvar? v) (ext-no-check this v (lvar (count (.s this))))
+       (lvar? v) (ext-no-check this v (lvar (count (:s this))))
        (coll? v) (-reify-tabled
                    (-reify-tabled this (first v))
                    (next v))
@@ -1999,20 +2029,20 @@
 
   ;; argv are the actual parameters passed to a goal. cache
   ;; is the cache from the table for reified argv. on initial
-  ;; call start is nil and end nil - so internally they will be
-  ;; initialized to the contents of the cache & 0
+  ;; call start and end are nil - so internally they will be
+  ;; initialized to the contents of the cache & 0 respectively
   (reuse [this argv cache start end]
-    (let [start (or start @cache)
+    (let [start (or start (:ansl @cache))
           end   (or end 0)]
       (letfn [(reuse-loop [ansv*]
                 (if (= (count ansv*) end)
                   ;; we've run out of answers terms to reuse in the cache
                   [(make-suspended-stream cache start
-                     (fn [] (reuse this argv cache @cache (count start))))]
+                     (fn [] (reuse this argv cache (:ansl @cache) (count start))))]
                   ;; we have answer terms to reuse in the cache
-                  (let [ans (first ansv*)]
+                  (let [ans (first ansv*)] ;; FIXME: sets are unordered! - David
                     (Choice. (subunify this argv (reify-tabled this ans))
-                      (fn [] (reuse-loop (disj ansv* ans)))))))]
+                      (fn [] (reuse-loop (rest ansv*)))))))]
         (reuse-loop start))))
 
   ;; unify an argument with an answer from a cache
@@ -2067,12 +2097,12 @@
   [argv cache]
   (fn [a]
     (let [rargv (-reify a argv)]
-      (when-not (contains? @cache rargv)
+      (when-not (-cached? @cache rargv)
         (swap! cache
           (fn [cache]
-            (if (contains? cache rargv)
+            (if (-cached? cache rargv)
               cache
-              (conj cache (reify-tabled a argv)))))
+              (-add cache (reify-tabled a argv)))))
         a))))
 
 ;; -----------------------------------------------------------------------------
@@ -2103,7 +2133,7 @@
                               (fn [table#]
                                 (if (contains? table# key#)
                                   table#
-                                  (assoc table# key# (atom #{})))))
+                                  (assoc table# key# (atom (answer-cache))))))
                      cache# (get table# key#)]
                  ((fresh []
                     ~@grest
@@ -2248,7 +2278,8 @@
         rcs (->> (vals (:cm cs))
                  (filter reifiable?)
                  (map #(reifyc % v r a))
-                 (filter #(not (nil? %))))]
+                 (filter #(not (nil? %)))
+                 (into #{}))]
     (if (empty? rcs)
       (choice (list v) empty-f)
       (choice (list `(~v :- ~@rcs)) empty-f))))
@@ -2289,10 +2320,7 @@
 (defmacro let-dom
   [a vars & body]
   (let [get-var-dom (fn [a [v b]]
-                      `(~b (let [v# (walk ~a ~v)]
-                             (if (lvar? v#)
-                               (get-dom-fd ~a v#)
-                               v#))))]
+                      `(~b (get-dom-fd ~a ~v)))]
    `(let [~@(mapcat (partial get-var-dom a) (partition 2 vars))]
       ~@body)))
 
@@ -2414,7 +2442,7 @@
 
   clojure.lang.IPersistentMap
   (disunify-terms [u v s cs]
-    (if (= (count u) (count v))
+    (if (and (map? v) (= (count u) (count v)))
       (loop [ks (seq (keys u)) cs cs]
         (if ks
           (let [kf (first ks)
@@ -2608,6 +2636,10 @@
 (defn partial-map? [x]
   (instance? PMap x))
 
+(extend-type clojure.lang.IPersistentMap
+  IFeature
+  (-feature [x] (partial-map x)))
+
 (defn -featurec
   [x fs]
   (reify
@@ -2630,13 +2662,21 @@
     IConstraintWatchedStores
     (watched-stores [this] #{::subst})))
 
+(defn ->feature [x]
+  (-feature
+    (walk-term x
+      (fn [y]
+        (if (tree-term? y)
+          (->feature y)
+          y)))))
+
 (defn featurec
   "Ensure that a map contains at least the key-value pairs
   in the map fs. fs must be partially instantiated - that is, 
   it may contain values which are logic variables to support 
   feature extraction."
   [x fs]
-  (cgoal (-featurec x (partial-map fs))))
+  (cgoal (-featurec x (->feature fs))))
 
 ;; =============================================================================
 ;; defnc

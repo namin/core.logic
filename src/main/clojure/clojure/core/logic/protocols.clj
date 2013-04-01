@@ -102,6 +102,10 @@
 (defprotocol ISuspendedStream
   (ready? [this]))
 
+(defprotocol IAnswerCache
+  (-add [this x])
+  (-cached? [this x]))
+
 ;; =============================================================================
 ;; cKanren protocols
 
@@ -209,3 +213,9 @@
 
 (defprotocol IConstrainTree
   (-constrain-tree [t fc s]))
+
+;; -----------------------------------------------------------------------------
+;; Features
+
+(defprotocol IFeature
+  (-feature [x]))

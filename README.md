@@ -1,7 +1,7 @@
 core.logic
 ====
 
-A logic programming library for Clojure & ClojureScript. core.logic offers Prolog-like relational programming, constraint logic programming, and nominal logic programming for Clojure. At its heart is an original implementation of miniKanren as described in William Byrd's dissertation [Relational Programming in miniKanren: Techniques, Applications, and Implementations](http://pqdtopen.proquest.com/#abstract?dispub=3380156) as well as the extensions described in [cKanren](http://www.schemeworkshop.org/2011/papers/Alvis2011.pdf) and [alphaKanren](http://www.cs.indiana.edu/~webyrd/alphamk/alphamk.pdf). It is designed to be easily extended to forms of logic programming beyond the ones provided.
+A logic programming library for Clojure & ClojureScript. core.logic offers Prolog-like relational programming, constraint logic programming, and nominal logic programming for Clojure. At its heart is an original implementation of miniKanren as described in William Byrd's dissertation [Relational Programming in miniKanren: Techniques, Applications, and Implementations](http://pqdtopen.proquest.com/#abstract?dispub=3380156) as well as the extensions described in [cKanren](http://www.schemeworkshop.org/2011/papers/Alvis2011.pdf) and [αKanren](http://www.cs.indiana.edu/~webyrd/alphamk/alphamk.pdf). It is designed to be easily extended to forms of logic programming beyond the ones provided.
 
 Reasoned Schemer
 ----
@@ -30,9 +30,7 @@ YourKit is kindly supporting open source projects with its full-featured Java Pr
 Releases and dependency information
 ----
 
-Latest beta: 0.8.0-rc2
-
-Latest stable release: 0.7.5
+Latest stable release: 0.8.3
 
 * [All released versions](http://search.maven.org/#search%7Cgav%7C1%7Cg%3A%22org.clojure%22%20AND%20a%3A%22core.logic%22)
 * [Development snapshot version](http://oss.sonatype.org/index.html#nexus-search;gav~org.clojure~core.logic~~~)
@@ -40,7 +38,7 @@ Latest stable release: 0.7.5
 [Leiningen](http://github.com/technomancy/leiningen/) dependency information:
 
 ```
-[org.clojure/core.logic "0.7.5"]
+[org.clojure/core.logic "0.8.3"]
 ```
 
 [Maven](http://maven.apache.org) dependency information:
@@ -49,7 +47,7 @@ Latest stable release: 0.7.5
 <dependency>
   <groupId>org.clojure</groupId>
   <artifactId>core.logic</artifactId>
-  <version>0.7.5</version>
+  <version>0.8.3</version>
 </dependency>
 ```
 

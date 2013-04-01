@@ -800,6 +800,38 @@
          (into #{} '(tea cup)))))
 
 ;; -----------------------------------------------------------------------------
+;; copy-term
+
+(deftest test-copy-term-1
+  (is (= (run* [q]
+           (fresh [a b]
+             (copy-term a b)
+             (== q [a b])))
+        '([_0 _1])))
+  (is (= (run* [q]
+           (fresh [a b]
+             (copy-term `(~a) `(~b))
+             (== q [a b])))
+        '([_0 _1])))
+  (is (= (run* [q]
+           (fresh [a b]
+             (copy-term [a] [b])
+             (== q [a b])))
+        '([_0 _1])))
+  (is (= (run* [q]
+           (fresh [a b c]
+             (copy-term [a] c)
+             (== [b] c)
+             (== q [a b])))
+        '([_0 _1])))
+  (is (= (run* [q]
+           (fresh [a b c d]
+             (== c 1)
+             (copy-term [a c] [b d])
+             (== q [a b d])))
+        '([_0 _1 1]))))
+
+;; -----------------------------------------------------------------------------
 ;; disequality
 
 (deftest test-disequality-1
@@ -1010,6 +1042,11 @@
              (== x [1 w])
              (== y [2 z])))
         '(_0))))
+
+(deftest test-logic-119-disequality-1
+  (is (= (run* [q]
+           (!= {1 2 3 4} 'foo))
+        '(_0))))
 ;; -----------------------------------------------------------------------------
 ;; tabled
 
@@ -1104,20 +1141,21 @@
          '(1))))
 
 (defrel rel2 ^:index e ^:index a ^:index v)
+
 (facts rel2 [[:e1 :a1 :v1]
              [:e1 :a2 :v2]])
+
 (retractions rel2 [[:e1 :a1 :v1]
                    [:e1 :a1 :v1]
                    [:e1 :a2 :v2]])
 
 (deftest rel2-dup-retractions
   (is (= (run* [out]
-               (fresh [e a v]
-                      (rel2 e :a1 :v1)
-                      (rel2 e a v)
-                      (== [e a v] out))))
-      '()))
-
+           (fresh [e a v]
+             (rel2 e :a1 :v1)
+             (rel2 e a v)
+             (== [e a v] out)))
+        '())))
 
 ;; -----------------------------------------------------------------------------
 ;; nil in collection
@@ -1199,6 +1237,9 @@
   (is (= (u/unify ['{:a [?b (?c [?d {:e ?e}])]} {:a [:b '(:c [:d {:e :e}])]}])
          {:a [:b '(:c [:d {:e :e}])]})))
 
+(deftest test-unifier-12
+  (is (= (u/unify '[?x 1]) 1)))
+
 ;; -----------------------------------------------------------------------------
 ;; custom var reification
 
@@ -1258,7 +1299,9 @@
 
 (deftest test-unifier-as-1
   (is (= (u/unify {:as '{?x (?y ?z)}} ['?x '(1 2)])))
-  (is (= (u/unify {:as '{?x (?y ?z)}} ['(?x) '((1 2))]))))
+  (is (= (u/unify {:as '{?x (?y ?z)}} ['(?x) '((1 2))])))
+  (is (= (u/unify {:as '{?x (?y ?y)}} '[[?y ?x] [1 (1 1)]]) 
+         '[1 (1 1)])))
 
 ;;Anonymous constraints
 (deftest test-unifier-anon-constraints-3 ;;One var
@@ -1290,6 +1333,10 @@
 (deftest test-binding-map-6
   (is (= (u/unifier ['(?x 2 . ?y) '(1 9 3 4 5)])
          nil)))
+
+(deftest test-binding-map-7
+  (is (= (u/unifier '[((?x ?y)) ((1 2))])
+         '{?x 1 ?y 2})))
 
 (deftest test-binding-map-constraints-1
   (is (= (u/unifier {:when {'?x evenc '?y div3c}} ['(?x ?y) '(2 6)])
@@ -1550,6 +1597,207 @@
   (is (= (run* [q]
            (fd/in q (fd/interval 3 3)))
          '(3))))
+
+(def patho-112
+  (tabled
+    [graph start end]
+    (conde
+      [(== start end)]
+      [(fresh [?via ?vias]
+         (project [start graph]
+           (== ?vias  ((:successors graph) start)))
+         (membero ?via ?vias)
+         (patho-112 graph ?via end))])))
+
+(defn solve-goals [graph curr end goals]
+  (all
+    (project [goals]
+      ;;when there are no more goals we are done
+      (conde [(== true
+                (empty? goals)) 
+               (== curr end)]
+        ;;there are still goals left
+        ;;solve the first and recursive call
+        [(== false (empty? goals))
+          (fresh [goal tail via]
+            (== goal (first goals))
+            (== tail (rest goals))
+            (project [goal]
+              (goal graph curr via)
+              (solve-goals graph via end tail)))]))))
+
+(def foo :foo)
+(def bar :bar)
+(def baz :baz)
+(def quux :quux)
+
+(defn to-node [node]
+  (cond
+    (= node foo)
+    (seq (list bar))
+    (= node bar)
+    (seq (list baz))
+    (= node baz)
+    (seq (list quux))))
+
+(def graph { :successors to-node })
+
+(defn test-1 []
+  (run* [?result]
+    (fresh [?start ?end]
+      (== ?start foo)
+      (== ?end quux)
+      (solve-goals graph ?start ?end
+        (seq (list patho-112
+               (fn [graph current next]
+                 (all
+                   (== ?result current)
+                   ;;(trace-lvars "current" current)
+                   (== current next)))
+               patho-112))))))
+
+(deftest test-112-tabling
+  (is (= (test-1)
+         '(:foo :bar :baz :quux))))
+
+(defne lefto
+  "x appears to the left of y in collection l."
+  [x y l]
+  ([_ _ [x . tail]] (membero y tail))
+  ([_ _ [_ . tail]] (lefto x y tail)))
+
+(defn rule-1 [answers]
+  (fresh [c1 r1 c2 r2]
+    (membero [:landon (lvar) c1 r1] answers)
+    (membero [:jason (lvar) c2 r2] answers)
+    (conde
+      [(== r1 7.5)
+        (== c2 :mozzarella)]
+      [(== r2 7.5)
+        (== c1 :mozzarella)])))
+
+(defn rule-2 [answers]
+  (membero [(lvar) :fortune :blue-cheese (lvar)] answers))
+
+(defn rule-3 [answers]
+  (fresh [s1 s2]
+    (== [(lvar) :vogue (lvar) (lvar)] s1)
+    (== [(lvar) (lvar) :muenster (lvar)] s2)
+    (membero s1 answers)
+    (membero s2 answers)
+    (!= s1 s2)))
+
+(defn rule-4 [answers]
+  (permuteo [[(lvar) :fortune (lvar) (lvar)]
+              [:landon (lvar) (lvar) (lvar)]
+              [(lvar) (lvar) (lvar) 5]
+              [(lvar) (lvar) :mascarpone (lvar)]
+              [(lvar) :vogue (lvar) (lvar)]]
+    answers))
+
+(defn rule-6 [answers]
+  (fresh [r1 r2]
+    (membero [(lvar) :cosmopolitan (lvar) r1] answers)
+    (membero [(lvar) (lvar) :mascarpone r2] answers)
+    (lefto r1 r2 [5 6 7 7.5 8.5])))
+
+(defn rule-9 [answers]
+  (fresh [r1 r2]
+    (membero [(lvar) :time (lvar) r1] answers)
+    (membero [:landon (lvar) (lvar) r2] answers)
+    (lefto r1 r2 [5 6 7 7.5 8.5])))
+
+(defn rule-0 [answers]
+  (fresh [s]
+    (== [:amaya (lvar) (lvar) (lvar)] s)
+    (membero s answers)))
+
+(deftest test-116-constraint-store-migrate
+  (is (= (first
+           (run 1 [answers]
+             (rule-0 answers)
+             (rule-1 answers)
+             (rule-2 answers)
+             (rule-3 answers)
+             (rule-4 answers)
+             (rule-6 answers)
+             (rule-9 answers)))
+        '([:amaya :fortune :blue-cheese _0]
+          [:landon :cosmopolitan :muenster 7.5]
+          [:jason :vogue :mozzarella 5]
+          [_1 :time :mascarpone 5]
+          [_2 :vogue :mascarpone 8.5]))))
+
+(deftest test-71-simple-unifier-reify-vars
+  (is (= (u/unify '[(?x) (?x) (1)])
+         '(1))))
+
+(deftest test-36-unifier-behavior
+  (is (= (u/unifier ['(?x ?y) '(?y ?x)])
+         '{?x ?y})))
+
+(deftest test-108-recursive-features
+  (is (= (run* [x y]
+           (featurec x {:foo {:bar y}})
+           (== x {:foo {:bar 1}}))
+        '([{:foo {:bar 1}} 1])))
+  (is (= (run* [x y]
+           (featurec x {:foo {:bar y}})
+           (== x {:foo {:bar 1 :woz 2}}))
+        '([{:foo {:bar 1 :woz 2}} 1])))
+  (is (= (run* [x y]
+           (featurec x {:foo {:bar y}})
+           (== x {:foo {:baz 1}}))
+        '())))
+
+(deftest test-disjoint-logic-124
+  (is (false? (fd/disjoint?
+               (fd/interval 2 4)
+               (fd/multi-interval 1 (fd/interval 3 4)))))
+  (is (false? (fd/disjoint?
+               (fd/multi-interval 1 (fd/interval 3 4))
+               (fd/interval 2 4)))))
+
+(deftest test-arch-friends-problem-logic-124
+  (let [expected [{:wedges 2,
+                    :flats 4,
+                    :pumps 1,
+                    :sandals 3,
+                    :foot-farm 2,
+                    :heels-in-a-hand-cart 4,
+                    :shoe-palace 1,
+                    :tootsies 3}]]
+    (is (= expected
+           (run* [q]
+             (fresh [wedges flats pumps sandals
+                     ff hh sp tt pumps+1]
+               (fd/in wedges flats pumps sandals
+                      ff hh sp tt pumps+1 (fd/interval 1 4))
+               (fd/distinct [wedges flats pumps sandals])
+               (fd/distinct [ff hh sp tt])
+               (fd/== flats hh)
+               (fd/+ pumps 1 pumps+1)
+               (fd/!= pumps+1 tt)
+               (fd/== ff 2)
+               (fd/+ sp 2 sandals)
+               (== q {:wedges wedges
+                      :flats flats
+                      :pumps pumps
+                      :sandals sandals
+                      :foot-farm ff
+                      :heels-in-a-hand-cart hh
+                      :shoe-palace sp
+                      :tootsies tt})))))))
+
+(deftest test-126-times-plus
+  (is (= (set
+           (run* [q]
+             (fresh [x y p]
+               (fd/in x y (fd/interval 1 38))
+               (fd/* x y p)
+               (fd/+ p 2 40)
+               (== q [x y]))))
+        #{[1 38] [38 1] [2 19] [19 2]})))
 
 ;; =============================================================================
 ;; cKanren
