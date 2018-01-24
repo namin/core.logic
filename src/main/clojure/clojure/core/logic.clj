@@ -9,6 +9,20 @@
             IBindable ITreeTerm IVar ITreeConstraint INonStorable]))
 
 (def hack (atom false))
+(defn rvar? [x] (. x startsWith "_"))
+(defn rdisequality? [x] (and (seq? x) (= '!= (first x))))
+(defn cmp-lex [x y]
+   (let [x (. x toString)
+         y (. y toString)]
+     (if (rvar? x)
+       (if (rvar? y)
+         (compare x y)
+         -1)
+       (if (rvar? y)
+         +1
+         (compare x y)))))
+(defn sort-lex [xs]
+  (sort cmp-lex xs))
 
 (defmacro ^:private compile-when
   ([exp then]
@@ -2210,7 +2224,13 @@
                      (into #{}))]
         (if (empty? rcs)
           (choice v empty-f)
-          (choice `(~v :- ~@rcs) empty-f))))))
+          (choice `(~v :- ~@(sort
+                             (fn [x y]
+                               (if (and (rdisequality? x)
+                                        (rdisequality? y))
+                                 (cmp-lex (rest x) (rest y))
+                                 0))
+                             rcs)) empty-f))))))
 
 (defn reifyg [x]
   (all
@@ -2490,7 +2510,7 @@
           nil
           (if (not (empty? (recover-vars (walk* r p))))
               nil ;; non-query variables can always be satisfied...
-              `(~'!= ~@p*)))))
+              `(~'!= ~@(sort-lex (map sort-lex p*)))))))
     IConstraintOp
     (-rator [_] `!=)
     (-rands [_] (seq (recover-vars p)))

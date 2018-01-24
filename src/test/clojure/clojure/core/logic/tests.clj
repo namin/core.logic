@@ -1357,10 +1357,7 @@
               (!= a 4)))
          '(_0))))
 
-;; TODO: currently fails
-;; ((_0 :- (!= (_0 4)) (!= (_0 3))))
-;; (benign reordering)
-#_(deftest test-mk-disequality-33
+(deftest test-mk-disequality-33
   (is (= (run* [q]
            (!= 4 q)
            (!= 3 q))
@@ -1406,20 +1403,14 @@
              (== a 3)))
          '([3 _0]))))
 
-;; TODO: currently fails
-;; (([_0 _1] :- (!= (_1 _0))))
-;; (benign reordering)
-#_(deftest test-mk-disequality-38
+(deftest test-mk-disequality-38
   (is (= (run* [q]
            (fresh [x y]
              (== [x y] q)
              (!= y x)))
          '(([_0 _1] :- (!= (_0 _1)))))))
 
-;; TODO: currently fails
-;; (([_0 _1] :- (!= (_1 _0))))
-;; (benign ordering)
-#_(deftest test-mk-disequality-39
+(deftest test-mk-disequality-39
   (is (= (run* [q]
            (fresh [x y]
              (== [x y] q)
