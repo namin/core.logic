@@ -1417,8 +1417,8 @@
          '(([_0 _1] :- (!= (_0 _1)))))))
 
 ;; TODO: currently fails
-;; (([_0 _1] :- (!= (_1 _0)) (!= (_0 _1))))
-;; (redundant symmetric constraint)
+;; (([_0 _1] :- (!= (_1 _0))))
+;; (benign ordering)
 #_(deftest test-mk-disequality-39
   (is (= (run* [q]
            (fresh [x y]
@@ -1439,10 +1439,7 @@
   (is (= (run* [q] (!= q 5) (!= 5 q))
          '((_0 :- (!= (_0 5)))))))
 
-;; TODO: currently fails
-;; (([_0 _1] :- (!= (_0 5)) (!= (_0 5) (_1 6))))
-;; (spurious ground constraint)
-#_(deftest test-mk-disequality-42
+(deftest test-mk-disequality-42
   (is (= (run* [q]
            (fresh [x y]
              (== [x y] q)
@@ -1450,10 +1447,7 @@
              (!= x 5)))
          '(([_0 _1] :- (!= (_0 5)))))))
 
-;; TODO: currently fails
-;; (([_0 _1] :- (!= (_0 5)) (!= (_0 5) (_1 6))))
-;; (spurious ground constraint)
-#_(deftest test-mk-disequality-43
+(deftest test-mk-disequality-43
   (is (= (run* [q]
            (fresh [x y]
              (== [x y] q)
@@ -1461,10 +1455,7 @@
               (!= [x y] [5 6])))
          '(([_0 _1] :- (!= (_0 5)))))))
 
-;; TODO: currently fails
-;; (([_0 _1] :- (!= (_0 5)) (!= (_0 5) (_1 6))))
-;; (spurious ground constraint)
-#_(deftest test-mk-disequality-44
+(deftest test-mk-disequality-44
   (is (= (run* [q]
            (fresh [x y]
               (!= x 5)
@@ -1472,10 +1463,7 @@
               (== [x y] q)))
          '(([_0 _1] :- (!= (_0 5)))))))
 
-;; TODO: currently fails
-;; (([_0 _1] :- (!= (_0 5)) (!= (_0 5) (_1 6))))
-;; (spurious ground constraint)
-#_(deftest test-mk-disequality-45
+(deftest test-mk-disequality-45
   (is (= (run* [q]
            (fresh [x y]
               (!= 5 x)
@@ -1483,10 +1471,7 @@
               (== [x y] q)))
          '(([_0 _1] :- (!= (_0 5)))))))
 
-;; TODO: currently fails
-;; (([_0 _1] :- (!= (_1 6) (_0 5)) (!= (_0 5))))
-;; (spurious ground constraint)
-#_(deftest test-mk-disequality-46
+(deftest test-mk-disequality-46
   (is (= (run* [q]
            (fresh [x y]
               (!= 5 x)

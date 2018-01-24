@@ -8,6 +8,8 @@
            [clojure.core.logic.protocols
             IBindable ITreeTerm IVar ITreeConstraint INonStorable]))
 
+(def hack (atom false))
+
 (defmacro ^:private compile-when
   ([exp then]
      (if (try (eval exp)
@@ -673,10 +675,10 @@
       (not= v ::not-found)
       (if (tree-term? v)
         (ext s u v)
-        (if (-> u clojure.core/meta ::unbound)
+        (if (and (-> u clojure.core/meta ::unbound)
+                 (not @hack))
           (ext-no-check s u (assoc (root-val s u) :v v))
           (ext-no-check s u v)))
-
       :else nil))
 
   IReifyTerm
@@ -2161,16 +2163,54 @@
        (verify-all-bound a constrained)
        ((onceo (force-ans constrained)) a)))))
 
+(defn unifys [Sp S]
+  (unify S (map first Sp) (map second Sp)))
+
+(defn subsumed-d? [d ds]
+  (cond
+    (empty? ds) false
+    :else
+    (let [S (unifys (-prefix d) empty-s)]
+      (let [Sp (unifys (-prefix (first ds)) S)]
+        (or
+         (and (not (nil? Sp)) (identical? S Sp))
+         (subsumed-d? d (rest ds)))))))
+
+(defn disequality? [d]
+  (= `!= (-rator d)))
+
+(defn subsumed? [d ds]
+  (and (disequality? d)
+       (subsumed-d? d (filter disequality? ds))))
+
+(defn rem-subsumed
+  ([D] (rem-subsumed D '()))
+  ([D ds]
+   (cond
+     (empty? D) ds
+     (or (subsumed? (first D) (rest D))
+         (subsumed? (first D) ds))
+     (rem-subsumed (rest D) ds)
+     :else (rem-subsumed (rest D)
+                         (cons (first D) ds)))))
+
 (defn reify-constraints [v r a]
   (let [cs  (:cs  a)
         rcs (->> (vals (:cm cs))
-                 (filter reifiable?)
-                 (map #(-reifyc % v r a))
-                 (filter #(not (nil? %)))
-                 (into #{}))]
-    (if (empty? rcs)
-      (choice v empty-f)
-      (choice `(~v :- ~@rcs) empty-f))))
+                 (filter reifiable?))]
+    (let [rcs
+          (do
+            (compare-and-set! hack false true)
+            (let [r (rem-subsumed rcs)]
+              (compare-and-set! hack true false)
+              r))]
+      (let [rcs (->> rcs
+                     (map #(-reifyc % v r a))
+                     (filter #(not (nil? %)))
+                     (into #{}))]
+        (if (empty? rcs)
+          (choice v empty-f)
+          (choice `(~v :- ~@rcs) empty-f))))))
 
 (defn reifyg [x]
   (all
